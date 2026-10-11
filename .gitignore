@@ -1,0 +1,4 @@
+.docker/mysql/*
+!.docker/mysql/init/
+repo/mysql/*
+!repo/mysql/init/
