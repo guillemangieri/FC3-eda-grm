@@ -1,0 +1,36 @@
+@walletUrl = http://localhost:8080
+@balancesUrl = http://localhost:3003
+@aliceAccountId = aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+@bobAccountId = bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+
+### 1. Saldo inicial de Alice: 1000.00000000
+GET {{balancesUrl}}/balances/{{aliceAccountId}}
+Accept: application/json
+
+### 2. Saldo inicial de Bob: 500.00000000
+GET {{balancesUrl}}/balances/{{bobAccountId}}
+Accept: application/json
+
+### 3. Transferir 100 de Alice para Bob pelo Wallet Core
+POST {{walletUrl}}/transactions
+Content-Type: application/json
+
+{
+  "account_id_from": "{{aliceAccountId}}",
+  "account_id_to": "{{bobAccountId}}",
+  "amount": 100
+}
+
+### Aguarde o consumo assíncrono antes de executar as consultas seguintes.
+
+### 4. Saldo esperado de Alice após a transferência: 900.00000000
+GET {{balancesUrl}}/balances/{{aliceAccountId}}
+Accept: application/json
+
+### 5. Saldo esperado de Bob após a transferência: 600.00000000
+GET {{balancesUrl}}/balances/{{bobAccountId}}
+Accept: application/json
+
+### 6. Conta sem projeção: HTTP 404
+GET {{balancesUrl}}/balances/00000000-0000-4000-8000-000000000000
+Accept: application/json

@@ -1,6 +1,6 @@
 .docker/
 repo/mysql/
 
-# READMEs de acompanhamento dos pontos; manter o README principal na entrega.
-/**/README.md
+# Versionar somente o README operacional da raiz do projeto.
+**/README.md
 !/README.md
