@@ -2,8 +2,11 @@ package create_transaction
 
 import (
 	"context"
+	"fmt"
+	"sync"
 
 	"github.com.br/devfullcycle/fc-ms-wallet/internal/entity"
+	"github.com.br/devfullcycle/fc-ms-wallet/internal/event"
 	"github.com.br/devfullcycle/fc-ms-wallet/internal/gateway"
 	"github.com.br/devfullcycle/fc-ms-wallet/pkg/events"
 	"github.com.br/devfullcycle/fc-ms-wallet/pkg/uow"
@@ -30,32 +33,36 @@ type BalanceUpdatedOutputDTO struct {
 }
 
 type CreateTransactionUseCase struct {
-	Uow                uow.UowInterface
-	EventDispatcher    events.EventDispatcherInterface
-	TransactionCreated events.EventInterface
-	BalanceUpdated     events.EventInterface
+	Uow             uow.UowInterface
+	EventDispatcher events.EventDispatcherInterface
+	mu              sync.Mutex
 }
 
 func NewCreateTransactionUseCase(
 	Uow uow.UowInterface,
 	eventDispatcher events.EventDispatcherInterface,
-	transactionCreated events.EventInterface,
-	balanceUpdated events.EventInterface,
 ) *CreateTransactionUseCase {
 	return &CreateTransactionUseCase{
-		Uow:                Uow,
-		EventDispatcher:    eventDispatcher,
-		TransactionCreated: transactionCreated,
-		BalanceUpdated:     balanceUpdated,
+		Uow:             Uow,
+		EventDispatcher: eventDispatcher,
 	}
 }
 
 func (uc *CreateTransactionUseCase) Execute(ctx context.Context, input CreateTransactionInputDTO) (*CreateTransactionOutputDTO, error) {
+	uc.mu.Lock()
+	defer uc.mu.Unlock()
+
 	output := &CreateTransactionOutputDTO{}
 	balanceUpdatedOutput := &BalanceUpdatedOutputDTO{}
-	err := uc.Uow.Do(ctx, func(_ *uow.Uow) error {
-		accountRepository := uc.getAccountRepository(ctx)
-		transactionRepository := uc.getTransactionRepository(ctx)
+	err := uc.Uow.Do(ctx, func(txUow *uow.Uow) error {
+		accountRepository, err := getAccountRepository(ctx, txUow)
+		if err != nil {
+			return err
+		}
+		transactionRepository, err := getTransactionRepository(ctx, txUow)
+		if err != nil {
+			return err
+		}
 
 		accountFrom, err := accountRepository.FindByID(input.AccountIDFrom)
 		if err != nil {
@@ -93,34 +100,47 @@ func (uc *CreateTransactionUseCase) Execute(ctx context.Context, input CreateTra
 		balanceUpdatedOutput.AccountIDTo = input.AccountIDTo
 		balanceUpdatedOutput.BalanceAccountIDFrom = accountFrom.Balance
 		balanceUpdatedOutput.BalanceAccountIDTo = accountTo.Balance
+
+		transactionCreated := event.NewTransactionCreated()
+		transactionCreated.SetPayload(output)
+		if err := uc.EventDispatcher.Dispatch(transactionCreated); err != nil {
+			return err
+		}
+
+		balanceUpdated := event.NewBalanceUpdated()
+		balanceUpdated.SetPayload(balanceUpdatedOutput)
+		if err := uc.EventDispatcher.Dispatch(balanceUpdated); err != nil {
+			return err
+		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	// carrega os dados do output como evento
-	uc.TransactionCreated.SetPayload(output)
-	// dispara o evento
-	uc.EventDispatcher.Dispatch(uc.TransactionCreated)
-
-	uc.BalanceUpdated.SetPayload(balanceUpdatedOutput)
-	uc.EventDispatcher.Dispatch(uc.BalanceUpdated)
 	return output, nil
 }
 
-func (uc *CreateTransactionUseCase) getAccountRepository(ctx context.Context) gateway.AccountGateway {
-	repo, err := uc.Uow.GetRepository(ctx, "AccountDB")
+func getAccountRepository(ctx context.Context, txUow *uow.Uow) (gateway.AccountGateway, error) {
+	repo, err := txUow.GetRepository(ctx, "AccountDB")
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return repo.(gateway.AccountGateway)
+	accountRepository, ok := repo.(gateway.AccountGateway)
+	if !ok {
+		return nil, fmt.Errorf("AccountDB has unexpected type %T", repo)
+	}
+	return accountRepository, nil
 }
 
-func (uc *CreateTransactionUseCase) getTransactionRepository(ctx context.Context) gateway.TransactionGateway {
-	repo, err := uc.Uow.GetRepository(ctx, "TransactionDB")
+func getTransactionRepository(ctx context.Context, txUow *uow.Uow) (gateway.TransactionGateway, error) {
+	repo, err := txUow.GetRepository(ctx, "TransactionDB")
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return repo.(gateway.TransactionGateway)
+	transactionRepository, ok := repo.(gateway.TransactionGateway)
+	if !ok {
+		return nil, fmt.Errorf("TransactionDB has unexpected type %T", repo)
+	}
+	return transactionRepository, nil
 }

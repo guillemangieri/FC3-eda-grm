@@ -41,34 +41,37 @@ func (u *Uow) UnRegister(name string) {
 
 func (u *Uow) GetRepository(ctx context.Context, name string) (interface{}, error) {
 	if u.Tx == nil {
-		tx, err := u.Db.BeginTx(ctx, nil)
-		if err != nil {
-			return nil, err
-		}
-		u.Tx = tx
+		return nil, errors.New("repository requested outside a transaction")
 	}
-	repo := u.Repositories[name](u.Tx)
+	factory, ok := u.Repositories[name]
+	if !ok {
+		return nil, fmt.Errorf("repository %q is not registered", name)
+	}
+	repo := factory(u.Tx)
 	return repo, nil
 }
 
 func (u *Uow) Do(ctx context.Context, fn func(Uow *Uow) error) error {
-	if u.Tx != nil {
-		return fmt.Errorf("transaction already started")
-	}
 	tx, err := u.Db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	u.Tx = tx
-	err = fn(u)
+	txUow := &Uow{Db: u.Db, Tx: tx, Repositories: u.Repositories}
+	err = fn(txUow)
 	if err != nil {
-		errRb := u.Rollback()
+		errRb := tx.Rollback()
 		if errRb != nil {
 			return errors.New(fmt.Sprintf("original error: %s, rollback error: %s", err.Error(), errRb.Error()))
 		}
 		return err
 	}
-	return u.CommitOrRollback()
+	if err := tx.Commit(); err != nil {
+		if errRb := tx.Rollback(); errRb != nil && !errors.Is(errRb, sql.ErrTxDone) {
+			return fmt.Errorf("original error: %s, rollback error: %s", err, errRb)
+		}
+		return err
+	}
+	return nil
 }
 
 func (u *Uow) Rollback() error {

@@ -2,7 +2,6 @@ package handler
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com.br/devfullcycle/fc-ms-wallet/pkg/events"
 	"github.com.br/devfullcycle/fc-ms-wallet/pkg/kafka"
@@ -18,8 +17,10 @@ func NewTransactionCreatedKafkaHandler(kafka *kafka.Producer) *TransactionCreate
 	}
 }
 
-func (h *TransactionCreatedKafkaHandler) Handle(message events.EventInterface, wg *sync.WaitGroup) {
-	defer wg.Done()
-	h.Kafka.Publish(message, nil, "transactions")
+func (h *TransactionCreatedKafkaHandler) Handle(message events.EventInterface) error {
+	if err := h.Kafka.Publish(message, nil, "transactions"); err != nil {
+		return err
+	}
 	fmt.Println("TransactionCreatedKafkaHandler: ", message.GetPayload())
+	return nil
 }

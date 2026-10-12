@@ -1,7 +1,7 @@
 package events
 
 import (
-	"sync"
+	"errors"
 	"testing"
 	"time"
 
@@ -35,7 +35,8 @@ type TestEventHandler struct {
 	ID int
 }
 
-func (h *TestEventHandler) Handle(event EventInterface, wg *sync.WaitGroup) {
+func (h *TestEventHandler) Handle(event EventInterface) error {
+	return nil
 }
 
 type EventDispatcherTestSuite struct {
@@ -150,17 +151,17 @@ type MockHandler struct {
 	mock.Mock
 }
 
-func (m *MockHandler) Handle(event EventInterface, wg *sync.WaitGroup) {
-	m.Called(event)
-	wg.Done()
+func (m *MockHandler) Handle(event EventInterface) error {
+	args := m.Called(event)
+	return args.Error(0)
 }
 
 func (suite *EventDispatcherTestSuite) TestEventDispatch_Dispatch() {
 	eh := &MockHandler{}
-	eh.On("Handle", &suite.event)
+	eh.On("Handle", &suite.event).Return(nil)
 
 	eh2 := &MockHandler{}
-	eh2.On("Handle", &suite.event)
+	eh2.On("Handle", &suite.event).Return(nil)
 
 	suite.eventDispatcher.Register(suite.event.GetName(), eh)
 	suite.eventDispatcher.Register(suite.event.GetName(), eh2)
@@ -170,6 +171,16 @@ func (suite *EventDispatcherTestSuite) TestEventDispatch_Dispatch() {
 	eh2.AssertExpectations(suite.T())
 	eh.AssertNumberOfCalls(suite.T(), "Handle", 1)
 	eh2.AssertNumberOfCalls(suite.T(), "Handle", 1)
+}
+
+func (suite *EventDispatcherTestSuite) TestEventDispatch_ReturnsHandlerError() {
+	expected := errors.New("publish failed")
+	eh := &MockHandler{}
+	eh.On("Handle", &suite.event).Return(expected)
+	suite.eventDispatcher.Register(suite.event.GetName(), eh)
+
+	err := suite.eventDispatcher.Dispatch(&suite.event)
+	suite.ErrorIs(err, expected)
 }
 
 func TestSuite(t *testing.T) {

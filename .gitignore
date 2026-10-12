@@ -1,7 +1,5 @@
-.docker/mysql/*
-!.docker/mysql/init/
-repo/mysql/*
-!repo/mysql/init/
+.docker/
+repo/mysql/
 
 # READMEs de acompanhamento dos pontos; manter o README principal na entrega.
 /**/README.md

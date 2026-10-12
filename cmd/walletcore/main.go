@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com.br/devfullcycle/fc-ms-wallet/internal/database"
-	"github.com.br/devfullcycle/fc-ms-wallet/internal/event"
 	"github.com.br/devfullcycle/fc-ms-wallet/internal/event/handler"
 	createaccount "github.com.br/devfullcycle/fc-ms-wallet/internal/usecase/create_account"
 	"github.com.br/devfullcycle/fc-ms-wallet/internal/usecase/create_client"
@@ -28,17 +27,21 @@ func main() {
 	defer db.Close()
 
 	configMap := ckafka.ConfigMap{
-		"bootstrap.servers": "kafka:29092",
-		"group.id":          "wallet",
+		"bootstrap.servers":  "kafka:29092",
+		"group.id":           "wallet",
+		"enable.idempotence": true,
+		"acks":               "all",
+		"message.timeout.ms": 10000,
 	}
-	kafkaProducer := kafka.NewKafkaProducer(&configMap)
+	kafkaProducer, err := kafka.NewKafkaProducer(&configMap)
+	if err != nil {
+		panic(err)
+	}
+	defer kafkaProducer.Close()
 
 	eventDispatcher := events.NewEventDispatcher()
 	eventDispatcher.Register("TransactionCreated", handler.NewTransactionCreatedKafkaHandler(kafkaProducer))
 	eventDispatcher.Register("BalanceUpdated", handler.NewUpdateBalanceKafkaHandler(kafkaProducer))
-	transactionCreatedEvent := event.NewTransactionCreated()
-	balanceUpdatedEvent := event.NewBalanceUpdated()
-
 	clientDb := database.NewClientDB(db)
 	accountDb := database.NewAccountDB(db)
 
@@ -46,13 +49,13 @@ func main() {
 	uow := uow.NewUow(ctx, db)
 
 	uow.Register("AccountDB", func(tx *sql.Tx) interface{} {
-		return database.NewAccountDB(db)
+		return database.NewAccountDBTx(tx)
 	})
 
 	uow.Register("TransactionDB", func(tx *sql.Tx) interface{} {
-		return database.NewTransactionDB(db)
+		return database.NewTransactionDBTx(tx)
 	})
-	createTransactionUseCase := create_transaction.NewCreateTransactionUseCase(uow, eventDispatcher, transactionCreatedEvent, balanceUpdatedEvent)
+	createTransactionUseCase := create_transaction.NewCreateTransactionUseCase(uow, eventDispatcher)
 	createClientUseCase := create_client.NewCreateClientUseCase(clientDb)
 	createAccountUseCase := createaccount.NewCreateAccountUseCase(accountDb, clientDb)
 

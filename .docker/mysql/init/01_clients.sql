@@ -1,8 +1,0 @@
-USE wallet;
-
-CREATE TABLE IF NOT EXISTS clients (
-    id VARCHAR(255) PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    created_at DATE NOT NULL
-);

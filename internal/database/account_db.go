@@ -7,7 +7,14 @@ import (
 )
 
 type AccountDB struct {
-	DB *sql.DB
+	DB interface {
+		Prepare(query string) (*sql.Stmt, error)
+	}
+	LockForUpdate bool
+}
+
+func NewAccountDBTx(tx *sql.Tx) *AccountDB {
+	return &AccountDB{DB: tx, LockForUpdate: true}
 }
 
 func NewAccountDB(db *sql.DB) *AccountDB {
@@ -21,7 +28,11 @@ func (a *AccountDB) FindByID(id string) (*entity.Account, error) {
 	var client entity.Client
 	account.Client = &client
 
-	stmt, err := a.DB.Prepare("Select a.id, a.client_id, a.balance, a.created_at, c.id, c.name, c.email, c.created_at FROM accounts a INNER JOIN clients c ON a.client_id = c.id WHERE a.id = ?")
+	query := "Select a.id, a.client_id, a.balance, a.created_at, c.id, c.name, c.email, c.created_at FROM accounts a INNER JOIN clients c ON a.client_id = c.id WHERE a.id = ?"
+	if a.LockForUpdate {
+		query += " FOR UPDATE"
+	}
+	stmt, err := a.DB.Prepare(query)
 	if err != nil {
 		return nil, err
 	}

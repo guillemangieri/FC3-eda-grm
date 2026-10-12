@@ -24,7 +24,9 @@ func TestProducerPublish(t *testing.T) {
 	configMap := ckafka.ConfigMap{
 		"test.mock.num.brokers": 3,
 	}
-	producer := NewKafkaProducer(&configMap)
-	err := producer.Publish(expectedOutput, []byte("1"), "test")
+	producer, err := NewKafkaProducer(&configMap)
+	assert.NoError(t, err)
+	defer producer.Close()
+	err = producer.Publish(expectedOutput, []byte("1"), "test")
 	assert.Nil(t, err)
 }

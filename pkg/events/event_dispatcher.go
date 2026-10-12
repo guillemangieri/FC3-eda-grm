@@ -2,7 +2,7 @@ package events
 
 import (
 	"errors"
-	"sync"
+	"fmt"
 )
 
 var ErrHandlerAlreadyRegistered = errors.New("handler already registered")
@@ -19,12 +19,11 @@ func NewEventDispatcher() *EventDispatcher {
 
 func (ev *EventDispatcher) Dispatch(event EventInterface) error {
 	if handlers, ok := ev.handlers[event.GetName()]; ok {
-		wg := &sync.WaitGroup{}
 		for _, handler := range handlers {
-			wg.Add(1)
-			go handler.Handle(event, wg)
+			if err := handler.Handle(event); err != nil {
+				return fmt.Errorf("dispatch %s: %w", event.GetName(), err)
+			}
 		}
-		wg.Wait()
 	}
 	return nil
 }

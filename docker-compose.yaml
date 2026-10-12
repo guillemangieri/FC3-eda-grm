@@ -36,7 +36,7 @@ services:
       context: .
       dockerfile: balances/Dockerfile
     platform: linux/amd64
-    restart: on-failure
+    restart: unless-stopped
     ports:
       - 3003:3003
     environment:
@@ -46,11 +46,18 @@ services:
     depends_on:
       balances-init:
         condition: service_completed_successfully
+      balances-db:
+        condition: service_healthy
+        restart: true
+      kafka:
+        condition: service_healthy
+        restart: true
       kafka-init:
         condition: service_completed_successfully
 
   balances-db:
     image: mysql:5.7
+    restart: unless-stopped
     platform: linux/amd64
     environment:
       MYSQL_ROOT_PASSWORD: root
@@ -71,22 +78,31 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
-    entrypoint: ["kafka-topics"]
-    command: ["--bootstrap-server", "kafka:29092", "--create", "--if-not-exists", "--topic", "balances", "--partitions", "1", "--replication-factor", "1"]
+    volumes:
+      - ./docker/kafka-init.sh:/bootstrap/kafka-init.sh:ro
+    entrypoint: ["bash", "/bootstrap/kafka-init.sh"]
 
   goapp: 
     build: .
+    restart: unless-stopped
     platform: linux/amd64
     depends_on:
       wallet-init:
         condition: service_completed_successfully
+      mysql:
+        condition: service_healthy
+        restart: true
       kafka:
         condition: service_healthy
+        restart: true
+      kafka-init:
+        condition: service_completed_successfully
     ports:
       - 8080:8080
 
   mysql:
     image: mysql:5.7
+    restart: unless-stopped
     platform: linux/amd64
     environment:
       MYSQL_ROOT_PASSWORD: root
@@ -105,24 +121,32 @@ services:
 
   zookeeper:
     image: "confluentinc/cp-zookeeper:6.1.0"
+    restart: unless-stopped
     volumes:
       - zookeeper-data:/var/lib/zookeeper/data
       - zookeeper-log:/var/lib/zookeeper/log
-    container_name: zookeeper
     ports:
       - 2181:2181
     environment:
       TZ: Sao_Paulo/Brazil
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD", "cub", "zk-ready", "localhost:2181", "5"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 20s
 
   kafka:
     image: "confluentinc/cp-enterprise-kafka:6.1.0"
+    restart: unless-stopped
     volumes:
       - kafka-data:/var/lib/kafka/data
-    container_name: kafka
     depends_on:
-      - zookeeper
+      zookeeper:
+        condition: service_healthy
+        restart: true
     ports:
     # Exposes 9092 for external connections to the broker
     # Use kafka:29092 for connections internal on the docker network
@@ -150,10 +174,13 @@ services:
 
   control-center:
     image: confluentinc/cp-enterprise-control-center:7.3.0
+    profiles: ["tools"]
+    restart: unless-stopped
     hostname: control-center
-    container_name: control-center
     depends_on:
-      - kafka
+      kafka:
+        condition: service_healthy
+        restart: true
     ports:
       - "9021:9021"
     environment:
