@@ -1,3 +1,5 @@
 .docker
+.git
+repo/mysql
 **/*.sock
 mysql.sock

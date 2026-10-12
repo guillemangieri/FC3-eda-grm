@@ -1,0 +1,33 @@
+@balancesUrl = http://localhost:3003
+@accountId = aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+@accountToId = bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+
+### Saldo projetado pelo consumidor Kafka
+GET {{balancesUrl}}/balances/{{accountId}}
+Accept: application/json
+
+### Bob: saldo inicial 500; após transferência de 100, saldo 600
+GET {{balancesUrl}}/balances/{{accountToId}}
+Accept: application/json
+
+### Transferência: Alice 1000 -> 900; Bob 500 -> 600 (instalação limpa)
+POST http://localhost:8080/transactions
+Content-Type: application/json
+
+{
+  "account_id_from": "{{accountId}}",
+  "account_id_to": "{{accountToId}}",
+  "amount": 100
+}
+
+### Consultar Alice novamente após o consumo Kafka
+GET {{balancesUrl}}/balances/{{accountId}}
+Accept: application/json
+
+### Consultar Bob novamente após o consumo Kafka
+GET {{balancesUrl}}/balances/{{accountToId}}
+Accept: application/json
+
+### Conta inexistente: HTTP 404
+GET {{balancesUrl}}/balances/conta-inexistente
+Accept: application/json
